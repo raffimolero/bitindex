@@ -9,6 +9,7 @@ struct BitsInner<'a> {
     prev_index: u8,
     prev_out: bool,
 }
+
 impl<'a> BitsInner<'a> {
     fn update(&mut self) {
         *self.fields &= !(1 << self.prev_index);
@@ -22,17 +23,19 @@ impl<'a> BitsInner<'a> {
         &mut self.prev_out
     }
 }
+
 impl<'a> Drop for BitsInner<'a> {
     fn drop(&mut self) {
-        self.observe(0);
+        self.update();
     }
 }
+
 impl<'a> From<&'a mut u128> for BitsInner<'a> {
     fn from(fields: &'a mut u128) -> Self {
         Self {
-            fields: fields,
+            prev_out: (*fields & 1) == 1,
             prev_index: 0,
-            prev_out: false,
+            fields,
         }
     }
 }
@@ -52,11 +55,13 @@ impl<'a> Bits<'a> {
         *unsafe { &*self.0.get() }.fields
     }
 }
+
 impl<'a> From<&'a mut u128> for Bits<'a> {
     fn from(fields: &'a mut u128) -> Self {
         Self(UnsafeCell::from(BitsInner::from(fields)))
     }
 }
+
 impl<'a> Index<u8> for Bits<'a> {
     type Output = bool;
 
@@ -64,8 +69,36 @@ impl<'a> Index<u8> for Bits<'a> {
         self.observe(index)
     }
 }
+
 impl<'a> IndexMut<u8> for Bits<'a> {
     fn index_mut(&mut self, index: u8) -> &mut Self::Output {
         self.observe(index)
+    }
+}
+
+pub struct Iter<'a> {
+    bits: Bits<'a>,
+    index: u8,
+}
+
+impl<'a> IntoIterator for Bits<'a> {
+    type Item = bool;
+    type IntoIter = Iter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            bits: self,
+            index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let out = (self.index < 128).then(|| self.bits[self.index]);
+        self.index += 1;
+        out
     }
 }
